@@ -1,0 +1,33 @@
+language: python
+python:
+  - "3.3"
+  - "3.4"
+  - "3.5"
+before_install:
+  - "sudo apt-get -q update"
+  - "pip install -U pip"
+install:
+  - "pip install coveralls"
+script:
+  - "coverage run --source=web_cache setup.py test"
+after_success:
+  - "coveralls"
+before_deploy:
+  - "sudo add-apt-repository -y ppa:marutter/c2d4u"  # to get newer pandoc
+  - "sudo apt-get -q update"
+  - "sudo apt-get -V install pandoc"
+  - "pip install pypandoc"
+deploy:
+  provider: pypi
+  user: desbma
+  password:
+    secure: "Qv6FcQ08dWVt2o9HPc+GLx4GOwXOqGiAs6Qswv/DnppPgBvrLZhOg6zv/rW+zUau1FKGGK43ggBpsmOlpkaFNvuGCkIwIUMEtBEX4iER4VyZSvs2iaCd5GaomsG+xBuFwKcANWI0IfEwyaXbnD2g3+Buyyt1WSkrc3gVE7wKKQcRLS+Gsd0fflGzmTa+qGaSoeHsuASqlBzWiavsWiHkWzqr0Des6BOQtuP9JbVWvqjSGZg1d6wVNwUBmuscTmBJZIq/hlcErNPB1W0s5UVk2GfspMt8etdkcxFl76MlV5q2IVDRZYTifk5BKP8afKCg+Vbv3JTLCICfYi2+nwBFmmQTPI/+7mZD+j0wruQH/6BzqR/nGXjYiPsq/RdpAtyGtU75sWuOYnyeTcTuODtw92VYq2ZruUMjb55i9p4NdQCSuSnK+pViFczuNzh3jViOt/EFbGsNeANrE4B6xuNRzJ7Dy1SSwYtGfXIFjA0UzoZiKxtsY7K5shqYtgd6dFs/QH01ucYZdGWEk8TbgvNv52d3Tc0HElT72SC/Pjg9zp9P1gdjRPAufpjYH0z0/LK6JAKWH9xnxDHUdjgRW9AkTcNrIGIW8obx1+wx0640CuHUWvbbp146P+SnbEYixkBwMtnCcywIiLGs37PV44ZUNet2opccsPYVrgAkzidYEDE="
+  on:
+    tags: true
+    branch: master
+notifications:
+  email:
+    recipients:
+      - secure: "RVij2G5EC2R/zb91Ex45QHBBVogp+7bTZyrcZKdKWLzvNoRGuAhE4j8dhPnQyGme61k9LOXrE++clQthKZ3qViS56x3x11KGCq/ZKq8/PlE871hIRNZh2E9898lysmn19QyAOGCHI61+KPCzO8kQ62KKF5VWHcTYfPJY4EkyDBAp2VTlOfnOYRkJbmCFkOkm1xIaNnT9uxbJEbDmOy5ML/6yNU1mS4qYl5wU6nnqX/ggmqhiymBIQmGcVHcZ3A2+EHHN2HAoWEzde8uk9smQS+IuX/3HyBa9WD/VYWwLtu9LDLZhhF+kkiCUJwfC5ns1YquA7oWplqN54lTLomSxf3XXidwMs/ULd5+/P47HOgwQUW2t7U5MQghiA+Lxa3wU/AEEkXISpezHQioBSfOKChpNYiRUvEXwGk0E8B6NQ+wLSkbU+XMVb4Z/k/WQxuiB+x67La2ZDXxjtrQ1afFZ5a2yW/kVSycbdOlQHliSCp6BbtmRRhYNwV+GnNMSlSA9AU6wuadegyOhVhy/cBqqydFvI6AHta8tAbqkerY2iBJWuZDORwD+gPe8q7p4x0aYw02ku9pfjCfNUlQ8d7QLn2cgKL9xwNe2s5pqGJ8hD/dMmB7rV57ga+ICXIe11UA/lAytmCRPtStCEDp4b995k+uB8CwqX1WIpOaaHuQhots="
+    on_success: always
+    on_failure: always
