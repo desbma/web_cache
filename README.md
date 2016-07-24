@@ -15,7 +15,7 @@ The typical use case is a URL to HTTP data cache, but it can also be used fo non
 
 * Simple `dict` interface allows natural usage (`if key in cache`, `value = cache[key]`, etc.)
 * Optional Zlib, BZIP2 or LZMA compression
-* FIFO or LRU cache evicton strategies
+* FIFO or LRU cache eviction strategies
 * Optional thread safe interface to work around Python Sqlite3 'same thread' limitation
 * Provides cache hit rate statistics
 
