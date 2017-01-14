@@ -31,7 +31,7 @@ except ImportError:
 setup(name="web_cache",
       version=version,
       author="desbma",
-      packages=find_packages(),
+      packages=find_packages(exclude=("tests",)),
       test_suite="tests",
       install_requires=requirements,
       description="Simple persistent cache storage, with different cache eviction strategies, and optional compression",
