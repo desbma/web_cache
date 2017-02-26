@@ -1,8 +1,8 @@
 Web cache
 =========
 
-[![Latest Version](https://img.shields.io/pypi/v/web_cache.svg?style=flat)](https://pypi.python.org/pypi/web_cache/)
-[![Tests Status](https://img.shields.io/travis/desbma/web_cache/master.svg?label=tests&style=flat)](https://travis-ci.org/desbma/web_cache)
+[![Latest version](https://img.shields.io/pypi/v/web_cache.svg?style=flat)](https://pypi.python.org/pypi/web_cache/)
+[![Tests status](https://img.shields.io/travis/desbma/web_cache/master.svg?label=tests&style=flat)](https://travis-ci.org/desbma/web_cache)
 [![Coverage](https://img.shields.io/coveralls/desbma/web_cache/master.svg?style=flat)](https://coveralls.io/github/desbma/web_cache?branch=master)
 [![Supported Python versions](https://img.shields.io/pypi/pyversions/web_cache.svg?style=flat)](https://pypi.python.org/pypi/web_cache/)
 [![License](https://img.shields.io/github/license/desbma/web_cache.svg?style=flat)](https://pypi.python.org/pypi/web_cache/)
