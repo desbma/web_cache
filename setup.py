@@ -14,7 +14,7 @@ if sys.hexversion < 0x3030000:
 with open(os.path.join("web_cache", "__init__.py"), "rt") as f:
   version = re.search("__version__ = \"([^\"]+)\"", f.read()).group(1)
 
-requirements= []
+requirements = []
 # require enum34 if enum module is missing (Python 3.3)
 try:
   import enum
