@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import collections
+import gc
 import logging
 import os
 import pickle
@@ -106,6 +107,9 @@ class TestWebCache(unittest.TestCase):
                       # add cache item again
                       cache[key] = data
 
+                # fix huge memory usage with pypy
+                gc.collect()
+
   def test_getCacheHitStats(self):
     """ Get cache stats using all cache parameter combinations. """
     for cache_class in (web_cache.WebCache, web_cache.ThreadedWebCache):
@@ -145,6 +149,9 @@ class TestWebCache(unittest.TestCase):
                       self.assertEqual(cache.getCacheHitStats(), (i, i - 1))
                       self.assertNotIn("(o_o)", cache)
                       self.assertEqual(cache.getCacheHitStats(), (i, i))
+
+                # fix huge memory usage with pypy
+                gc.collect()
 
   def test_purge(self):
     """ Purge obsolete cache entries. """
@@ -187,6 +194,9 @@ class TestWebCache(unittest.TestCase):
               # nothing should have been purged
               self.assertEqual(purged_count, 0)
               self.assertEqual(len(cache), 10)
+
+          # fix huge memory usage with pypy
+          gc.collect()
 
 
 if __name__ == "__main__":

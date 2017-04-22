@@ -300,6 +300,10 @@ class ThreadedWebCache:
     else:
       raise e
 
+  def __del__(self):
+    self.thread.stop()
+    self.thread.join()
+
   def waitResult(self):
     """ Wait for the execution of the last enqueued job to be done, and return the result or raise an exception. """
     self.thread.execute_queue.join()
@@ -327,6 +331,7 @@ class WebCacheThread(threading.Thread):
     self.execute_queue = queue.Queue()
     self.exception_queue = collections.defaultdict(functools.partial(queue.Queue, maxsize=1))
     self.result_queue = collections.defaultdict(functools.partial(queue.Queue, maxsize=1))
+    self.loop = True
     super().__init__(name=__class__.__name__, daemon=True)
 
   def run(self):
@@ -337,14 +342,17 @@ class WebCacheThread(threading.Thread):
       cache_obj = WebCache(*args, **kwargs)
     except Exception as e:
       self.exception_queue[thread_id].put_nowait(e)
-      loop = False
-    else:
-      loop = True
+      self.loop = False
     self.execute_queue.task_done()
 
     # execute loop
-    while loop:
-      thread_id, method, args, kwargs = self.execute_queue.get()
+    while self.loop:
+      msg = self.execute_queue.get()
+      if msg is None:
+        # thread exist requested
+        assert(not self.loop)
+        break
+      thread_id, method, args, kwargs = msg
       try:
         result = method(cache_obj, *args, **kwargs)
       except Exception as e:
@@ -352,3 +360,8 @@ class WebCacheThread(threading.Thread):
       else:
         self.result_queue[thread_id].put_nowait(result)
       self.execute_queue.task_done()
+
+  def stop(self):
+    """ Request thread stop. """
+    self.loop = False
+    self.execute_queue.put_nowait(None)
