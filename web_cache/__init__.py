@@ -283,7 +283,7 @@ class ThreadedWebCache:
     # attach methods from WebCache, decorated by callToThread, to this object's class
     methods = inspect.getmembers(WebCache, inspect.isfunction)
     for method_name, method in methods:
-      if method_name in ("__init__", "__del__"):
+      if (method_name in ("__init__", "__del__")) or (method_name not in WebCache.__dict__):
         continue
       new_method = __class__.callToThread(method)
       setattr(self.__class__, method_name, new_method)
