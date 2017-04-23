@@ -302,7 +302,6 @@ class ThreadedWebCache:
 
   def __del__(self):
     self.thread.stop()
-    self.thread.join()
 
   def waitResult(self):
     """ Wait for the execution of the last enqueued job to be done, and return the result or raise an exception. """
