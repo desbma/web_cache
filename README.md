@@ -30,4 +30,4 @@ web_cache requires [Python](https://www.python.org/downloads/) >= 3.3.
 
 ## License
 
-[LGPLv2.1](https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html)
+[LGPLv2](https://www.gnu.org/licenses/old-licenses/lgpl-2.1-standalone.html
