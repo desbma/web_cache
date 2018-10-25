@@ -18,6 +18,7 @@ import threading
 import zlib
 
 
+DB_FORMAT_VERSION = 2  # incremented at each incompatible database format change
 DISABLE_PERSISTENT_CACHING = False  # useful for tests
 
 
@@ -69,20 +70,24 @@ class WebCache:
                                      added_timestamp INTEGER NOT NULL,
                                      last_accessed_timestamp INTEGER NOT NULL,
                                      data BLOB NOT NULL
-                                   );""" % (self.__table_name))
-      self.__connection.execute("""CREATE TABLE IF NOT EXISTS %s_post
+                                   );""" % (self.getDbTableName()))
+      self.__connection.execute("""CREATE TABLE IF NOT EXISTS %s
                                    (
                                      url TEXT NOT NULL,
                                      post_data BLOB NOT NULL,
                                      added_timestamp INTEGER NOT NULL,
                                      last_accessed_timestamp INTEGER NOT NULL,
                                      data BLOB NOT NULL
-                                   );""" % (self.__table_name))
-      self.__connection.execute("CREATE INDEX IF NOT EXISTS idx ON %s_post(url, post_data);" % (self.__table_name))
+                                   );""" % (self.getDbTableName(post=True)))
+      self.__connection.execute("CREATE INDEX IF NOT EXISTS idx ON %s(url, post_data);" % (self.getDbTableName(post=True)))
 
     # stats
     self.__hit_count = 0
     self.__miss_count = 0
+
+  def getDbTableName(self, *, post=False):
+    """ Get sqlite table name. """
+    return "%s%s_f%u" % (self.__table_name, "_post" if post else "", DB_FORMAT_VERSION)
 
   def getDatabaseFileSize(self):
     """ Return the file size of the database as a pretty string. """
@@ -104,9 +109,10 @@ class WebCache:
 
   def __len__(self):
     """ Return the number of items in the cache. """
+    row_count = 0
     with self.__connection:
-      row_count = self.__connection.execute("SELECT COUNT(*) FROM %s;" % (self.__table_name)).fetchall()[0][0]
-      row_count += self.__connection.execute("SELECT COUNT(*) FROM %s_post;" % (self.__table_name)).fetchall()[0][0]
+      for post in (False, True):
+        row_count += self.__connection.execute("SELECT COUNT(*) FROM %s;" % (self.getDbTableName(post=post))).fetchone()[0]
     return row_count
 
   def __del__(self):
@@ -127,14 +133,14 @@ class WebCache:
       if post_data is not None:
         post_bin_data = sqlite3.Binary(pickle.dumps(post_data, protocol=3))
         data = self.__connection.execute("""SELECT data
-                                            FROM %s_post
+                                            FROM %s
                                             WHERE url = ? AND
-                                                  post_data = ?;""" % (self.__table_name),
+                                                  post_data = ?;""" % (self.getDbTableName(post=True)),
                                          (url, post_bin_data)).fetchone()
       else:
         data = self.__connection.execute("""SELECT data
                                             FROM %s
-                                            WHERE url = ?;""" % (self.__table_name),
+                                            WHERE url = ?;""" % (self.getDbTableName()),
                                          (url,)).fetchone()
     if not data:
       raise KeyError(url_data)
@@ -155,13 +161,13 @@ class WebCache:
       with self.__connection:
         if post_data is not None:
           self.__connection.execute("UPDATE " +
-                                    self.__table_name +
-                                    "_post SET last_accessed_timestamp = strftime('%s', 'now') WHERE url = ? AND post_data = ?;",
+                                    self.getDbTableName(post=True) + " " +
+                                    "SET last_accessed_timestamp = strftime('%s', 'now') WHERE url = ? AND post_data = ?;",
                                     (url, post_bin_data))
         else:
           self.__connection.execute("UPDATE " +
-                                    self.__table_name +
-                                    " SET last_accessed_timestamp = strftime('%s', 'now') WHERE url = ?;",
+                                    self.getDbTableName() + " " +
+                                    "SET last_accessed_timestamp = strftime('%s', 'now') WHERE url = ?;",
                                     (url,))
     return data
 
@@ -187,12 +193,12 @@ class WebCache:
       if post_data is not None:
         post_bin_data = sqlite3.Binary(pickle.dumps(post_data, protocol=3))
         self.__connection.execute("INSERT OR REPLACE INTO " +
-                                  self.__table_name +
-                                  "_post (url, post_data, added_timestamp, last_accessed_timestamp,data) VALUES (?, ?, strftime('%s','now'), strftime('%s','now'), ?);",
+                                  self.getDbTableName(post=True) +
+                                  " (url, post_data, added_timestamp, last_accessed_timestamp,data) VALUES (?, ?, strftime('%s','now'), strftime('%s','now'), ?);",
                                   (url, post_bin_data, sqlite3.Binary(data)))
       else:
         self.__connection.execute("INSERT OR REPLACE INTO " +
-                                  self.__table_name +
+                                  self.getDbTableName() +
                                   " (url, added_timestamp, last_accessed_timestamp,data) VALUES (?, strftime('%s','now'), strftime('%s','now'), ?);",
                                   (url, sqlite3.Binary(data)))
 
@@ -207,11 +213,11 @@ class WebCache:
     with self.__connection:
       if post_data is not None:
         post_bin_data = sqlite3.Binary(pickle.dumps(post_data, protocol=3))
-        deleted_count = self.__connection.execute("DELETE FROM " + self.__table_name + "_post " +
+        deleted_count = self.__connection.execute("DELETE FROM " + self.getDbTableName(post=True) + " " +
                                                   "WHERE url = ? AND post_data = ?;",
                                                   (url, post_bin_data)).rowcount
       else:
-        deleted_count = self.__connection.execute("DELETE FROM " + self.__table_name + " WHERE url = ?;",
+        deleted_count = self.__connection.execute("DELETE FROM " + self.getDbTableName() + " WHERE url = ?;",
                                                   (url,)).rowcount
     if deleted_count == 0:
       raise KeyError(url_data)
@@ -223,20 +229,18 @@ class WebCache:
       with self.__connection:
         if self.__caching_strategy is CachingStrategy.FIFO:
           # dump least recently added rows
-          for table_suffix in ("", "_post"):
+          for post in (False, True):
             purged_count += self.__connection.execute("DELETE FROM " +
-                                                      self.__table_name +
-                                                      "%s " % (table_suffix) +
+                                                      self.getDbTableName(post=post) + " "
                                                       "WHERE (strftime('%s', 'now') - added_timestamp) > ?;",
                                                       (self.__expiration,)).rowcount
         elif self.__caching_strategy is CachingStrategy.LRU:
           # dump least recently accessed rows
-          for table_suffix in ("", "_post"):
+          for post in (False, True):
             purged_count += self.__connection.execute("DELETE FROM " +
-                                                       self.__table_name +
-                                                       "%s " % (table_suffix) +
-                                                       "WHERE (strftime('%s', 'now') - last_accessed_timestamp) > ?;",
-                                                       (self.__expiration,)).rowcount
+                                                      self.getDbTableName(post=post) + " "
+                                                      "WHERE (strftime('%s', 'now') - last_accessed_timestamp) > ?;",
+                                                      (self.__expiration,)).rowcount
     return purged_count
 
   def __contains__(self, url_data):
@@ -251,14 +255,14 @@ class WebCache:
       if post_data is not None:
         post_bin_data = sqlite3.Binary(pickle.dumps(post_data, protocol=3))
         hit = (self.__connection.execute("""SELECT COUNT(*)
-                                            FROM %s_post
+                                            FROM %s
                                             WHERE url = ? AND
-                                                  post_data = ?;""" % (self.__table_name),
+                                                  post_data = ?;""" % (self.getDbTableName(post=True)),
                                          (url, post_bin_data)).fetchall()[0][0] > 0)
       else:
         hit = (self.__connection.execute("""SELECT COUNT(*)
                                             FROM %s
-                                            WHERE url = ?;""" % (self.__table_name),
+                                            WHERE url = ?;""" % (self.getDbTableName()),
                                          (url,)).fetchall()[0][0] > 0)
     if hit:
       self.__hit_count += 1
