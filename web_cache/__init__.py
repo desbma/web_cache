@@ -18,18 +18,25 @@ import threading
 import zlib
 
 
-DB_FORMAT_VERSION = 2  # incremented at each incompatible database format change
+DB_FORMAT_VERSION = 2  # incremented at each incompatible database/pickle format change
+PICKLE_PROTOCOL_VERSION = 4
 DISABLE_PERSISTENT_CACHING = False  # useful for tests
 
 
-Compression = enum.Enum("Compression", ("NONE", "DEFLATE", "BZIP2", "LZMA"))
+class Compression(enum.IntEnum):
+  NONE = 0
+  DEFLATE = 1
+  BZIP2 = 2
+  LZMA = 3
+
+
 CachingStrategy = enum.Enum("CachingStrategy", ("FIFO", "LRU"))
 
 
 class WebCache:
 
   def __init__(self, db_filepath, table_name, *, caching_strategy, expiration=None, compression=Compression.NONE,
-               compression_level=9, safe_mode=False):
+               compression_level=9, auto_compression_threshold=1, safe_mode=False):
     """
     Args:
       db_filepath: Database filepath
@@ -39,6 +46,7 @@ class WebCache:
         never expire
       compression: Algorithm used to compress cache items
       compression_level: Compression level (0-9)
+      auto_compression_threshold: Don't compress if compression ratio is above this value
       safe_mode: If False, will enable some optimizations that increase cache write speed, but may compromise cache
         integrity in case of Python crash or power loss
     """
@@ -50,6 +58,8 @@ class WebCache:
     assert(compression in Compression)
     self.__compression = compression
     self.__compression_level = compression_level
+    assert(0 < auto_compression_threshold <= 1)
+    self.__auto_compression_threshold = auto_compression_threshold
 
     # connection
     if DISABLE_PERSISTENT_CACHING:
@@ -69,6 +79,7 @@ class WebCache:
                                      url TEXT PRIMARY KEY,
                                      added_timestamp INTEGER NOT NULL,
                                      last_accessed_timestamp INTEGER NOT NULL,
+                                     compression INTEGER NOT NULL,
                                      data BLOB NOT NULL
                                    );""" % (self.getDbTableName()))
       self.__connection.execute("""CREATE TABLE IF NOT EXISTS %s
@@ -77,6 +88,7 @@ class WebCache:
                                      post_data BLOB NOT NULL,
                                      added_timestamp INTEGER NOT NULL,
                                      last_accessed_timestamp INTEGER NOT NULL,
+                                     compression INTEGER NOT NULL,
                                      data BLOB NOT NULL
                                    );""" % (self.getDbTableName(post=True)))
       self.__connection.execute("CREATE INDEX IF NOT EXISTS idx ON %s(url, post_data);" % (self.getDbTableName(post=True)))
@@ -131,28 +143,28 @@ class WebCache:
 
     with self.__connection:
       if post_data is not None:
-        post_bin_data = sqlite3.Binary(pickle.dumps(post_data, protocol=3))
-        data = self.__connection.execute("""SELECT data
-                                            FROM %s
-                                            WHERE url = ? AND
-                                                  post_data = ?;""" % (self.getDbTableName(post=True)),
-                                         (url, post_bin_data)).fetchone()
+        post_bin_data = sqlite3.Binary(pickle.dumps(post_data, protocol=PICKLE_PROTOCOL_VERSION))
+        r = self.__connection.execute("""SELECT data, compression
+                                         FROM %s
+                                         WHERE url = ? AND
+                                               post_data = ?;""" % (self.getDbTableName(post=True)),
+                                      (url, post_bin_data)).fetchone()
       else:
-        data = self.__connection.execute("""SELECT data
-                                            FROM %s
-                                            WHERE url = ?;""" % (self.getDbTableName()),
-                                         (url,)).fetchone()
-    if not data:
+        r = self.__connection.execute("""SELECT data, compression
+                                         FROM %s
+                                         WHERE url = ?;""" % (self.getDbTableName()),
+                                      (url,)).fetchone()
+    if not r:
       raise KeyError(url_data)
-    data = data[0]
+    data, compression = r
 
-    if self.__compression is Compression.DEFLATE:
+    if compression == Compression.DEFLATE:
       buffer = memoryview(data)
       data = zlib.decompress(buffer)
-    elif self.__compression is Compression.BZIP2:
+    elif compression == Compression.BZIP2:
       buffer = memoryview(data)
       data = bz2.decompress(buffer)
-    elif self.__compression is Compression.LZMA:
+    elif compression == Compression.LZMA:
       buffer = memoryview(data)
       data = lzma.decompress(buffer)
 
@@ -181,26 +193,43 @@ class WebCache:
 
     if self.__compression is Compression.DEFLATE:
       buffer = memoryview(data)
-      data = zlib.compress(buffer, self.__compression_level)
+      compressed_data = zlib.compress(buffer, self.__compression_level)
     elif self.__compression is Compression.BZIP2:
       buffer = memoryview(data)
-      data = bz2.compress(buffer, compresslevel=self.__compression_level)
+      compressed_data = bz2.compress(buffer, compresslevel=self.__compression_level)
     elif self.__compression is Compression.LZMA:
       buffer = memoryview(data)
-      data = lzma.compress(buffer, format=lzma.FORMAT_ALONE, preset=self.__compression_level)
+      compressed_data = lzma.compress(buffer, format=lzma.FORMAT_ALONE, preset=self.__compression_level)
+
+    if (self.__compression is Compression.NONE) or (len(compressed_data) > len(data) * self.__auto_compression_threshold):
+      data_to_store = data
+      compression = Compression.NONE
+    else:
+      data_to_store = compressed_data
+      compression = self.__compression
+
+    # if self.__compression is not Compression.NONE:
+    #   print("%s compression: "
+    #         "original size = %u b, "
+    #         "compressed size = %u b, "
+    #         "compression threshold (%.1f%%) = %u b" % ("Disabling" if (compression is Compression.NONE) else "Enabling",
+    #                                                    len(data),
+    #                                                    len(compressed_data),
+    #                                                    self.__auto_compression_threshold * 100,
+    #                                                    self.__auto_compression_threshold * len(data)))
 
     with self.__connection:
       if post_data is not None:
-        post_bin_data = sqlite3.Binary(pickle.dumps(post_data, protocol=3))
+        post_bin_data = sqlite3.Binary(pickle.dumps(post_data, protocol=PICKLE_PROTOCOL_VERSION))
         self.__connection.execute("INSERT OR REPLACE INTO " +
                                   self.getDbTableName(post=True) +
-                                  " (url, post_data, added_timestamp, last_accessed_timestamp,data) VALUES (?, ?, strftime('%s','now'), strftime('%s','now'), ?);",
-                                  (url, post_bin_data, sqlite3.Binary(data)))
+                                  " (url, post_data, added_timestamp, last_accessed_timestamp, compression, data) VALUES (?, ?, strftime('%s','now'), strftime('%s','now'), ?, ?);",
+                                  (url, post_bin_data, compression, sqlite3.Binary(data_to_store)))
       else:
         self.__connection.execute("INSERT OR REPLACE INTO " +
                                   self.getDbTableName() +
-                                  " (url, added_timestamp, last_accessed_timestamp,data) VALUES (?, strftime('%s','now'), strftime('%s','now'), ?);",
-                                  (url, sqlite3.Binary(data)))
+                                  " (url, added_timestamp, last_accessed_timestamp, compression, data) VALUES (?, strftime('%s','now'), strftime('%s','now'), ?, ?);",
+                                  (url, compression, sqlite3.Binary(data_to_store)))
 
   def __delitem__(self, url_data):
     """ Remove an item from cache. """
@@ -212,7 +241,7 @@ class WebCache:
 
     with self.__connection:
       if post_data is not None:
-        post_bin_data = sqlite3.Binary(pickle.dumps(post_data, protocol=3))
+        post_bin_data = sqlite3.Binary(pickle.dumps(post_data, protocol=PICKLE_PROTOCOL_VERSION))
         deleted_count = self.__connection.execute("DELETE FROM " + self.getDbTableName(post=True) + " " +
                                                   "WHERE url = ? AND post_data = ?;",
                                                   (url, post_bin_data)).rowcount
@@ -253,17 +282,17 @@ class WebCache:
 
     with self.__connection:
       if post_data is not None:
-        post_bin_data = sqlite3.Binary(pickle.dumps(post_data, protocol=3))
+        post_bin_data = sqlite3.Binary(pickle.dumps(post_data, protocol=PICKLE_PROTOCOL_VERSION))
         hit = (self.__connection.execute("""SELECT COUNT(*)
                                             FROM %s
                                             WHERE url = ? AND
                                                   post_data = ?;""" % (self.getDbTableName(post=True)),
-                                         (url, post_bin_data)).fetchall()[0][0] > 0)
+                                         (url, post_bin_data)).fetchone()[0] > 0)
       else:
         hit = (self.__connection.execute("""SELECT COUNT(*)
                                             FROM %s
                                             WHERE url = ?;""" % (self.getDbTableName()),
-                                         (url,)).fetchall()[0][0] > 0)
+                                         (url,)).fetchone()[0] > 0)
     if hit:
       self.__hit_count += 1
     else:

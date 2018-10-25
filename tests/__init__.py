@@ -31,81 +31,87 @@ class TestWebCache(unittest.TestCase):
     for cache_class in (web_cache.WebCache, web_cache.ThreadedWebCache):
       for compression in web_cache.Compression:
         for compression_level in range(1, 9):
-          for caching_strategy in web_cache.CachingStrategy:
-            for expiration in (None, 0, INFINITY):
-              for sql_crash_safe in (True, False):
-                table_name = get_random_string(16, string.ascii_letters)
-                with tempfile.TemporaryDirectory(suffix=".sqlite") as tmp_dir:
-                  # init cache
-                  cache_filepath = os.path.join(tmp_dir, "db.sqlite")
-                  cache = cache_class(cache_filepath,
-                                      table_name,
-                                      caching_strategy=caching_strategy,
-                                      expiration=expiration,
-                                      compression=compression,
-                                      compression_level=compression_level,
-                                      safe_mode=sql_crash_safe)
-                  already_used_keys = set()
-                  item_count = 0
+          for auto_compression_threshold in (0.05, 1):
+            for compressible_data in (True, False):
+              for caching_strategy in web_cache.CachingStrategy:
+                for expiration in (None, 0, INFINITY):
+                  for sql_crash_safe in (True, False):
+                    table_name = get_random_string(16, string.ascii_letters)
+                    with tempfile.TemporaryDirectory(suffix=".sqlite") as tmp_dir:
+                      # init cache
+                      cache_filepath = os.path.join(tmp_dir, "db.sqlite")
+                      cache = cache_class(cache_filepath,
+                                          table_name,
+                                          caching_strategy=caching_strategy,
+                                          expiration=expiration,
+                                          compression=compression,
+                                          compression_level=compression_level,
+                                          auto_compression_threshold=auto_compression_threshold,
+                                          safe_mode=sql_crash_safe)
+                      already_used_keys = set()
+                      item_count = 0
 
-                  for req_type in ("get", "post"):
-                    for item_count in range(item_count + 1, item_count + 4):
-                      while True:
-                        # generate cache key
-                        key = get_random_string(16)
-                        if req_type == "post":
-                          key = key, collections.OrderedDict(((k, v) for k, v in zip((get_random_string(8) for _ in range(4)),
-                                                                                     (get_random_string(16) for _ in range(4)))))
+                      for req_type in ("get", "post"):
+                        for item_count in range(item_count + 1, item_count + 4):
+                          while True:
+                            # generate cache key
+                            key = get_random_string(16)
+                            if req_type == "post":
+                              key = key, collections.OrderedDict(((k, v) for k, v in zip((get_random_string(8) for _ in range(4)),
+                                                                                         (get_random_string(16) for _ in range(4)))))
 
-                        # ensure key is unique for this cache
-                        bin_key = pickle.dumps(key)
-                        if bin_key not in already_used_keys:
-                          already_used_keys.add(bin_key)
-                          break
+                            # ensure key is unique for this cache
+                            bin_key = pickle.dumps(key)
+                            if bin_key not in already_used_keys:
+                              already_used_keys.add(bin_key)
+                              break
 
-                      # generate cache data
-                      data = os.urandom(2 ** 13)
+                          # generate cache data
+                          if compressible_data:
+                            data = b"a" * (2 ** 13)
+                          else:
+                            data = os.urandom(2 ** 13)
 
-                      # check cache size
-                      self.assertEqual(len(cache), item_count - 1)
+                          # check cache size
+                          self.assertEqual(len(cache), item_count - 1)
 
-                      # check key is not in cache
-                      self.assertNotIn(key, cache)
-                      with self.assertRaises(KeyError):
-                        cache[key]
-                      with self.assertRaises(KeyError):
-                        del cache[key]
+                          # check key is not in cache
+                          self.assertNotIn(key, cache)
+                          with self.assertRaises(KeyError):
+                            cache[key]
+                          with self.assertRaises(KeyError):
+                            del cache[key]
 
-                      # add data to cache
-                      cache[key] = data
+                          # add data to cache
+                          cache[key] = data
 
-                      # check key is in cache
-                      self.assertIn(key, cache)
-                      self.assertEqual(cache[key], data)
+                          # check key is in cache
+                          self.assertIn(key, cache)
+                          self.assertEqual(cache[key], data)
 
-                      # check cache size
-                      self.assertEqual(len(cache), item_count)
+                          # check cache size
+                          self.assertEqual(len(cache), item_count)
 
-                      # delete cache item
-                      del cache[key]
+                          # delete cache item
+                          del cache[key]
 
-                      # check it is not in cache anymore
-                      self.assertNotIn(key, cache)
-                      with self.assertRaises(KeyError):
-                        cache[key]
-                      with self.assertRaises(KeyError):
-                        del cache[key]
+                          # check it is not in cache anymore
+                          self.assertNotIn(key, cache)
+                          with self.assertRaises(KeyError):
+                            cache[key]
+                          with self.assertRaises(KeyError):
+                            del cache[key]
 
-                      # check cache size
-                      self.assertEqual(len(cache), item_count - 1)
+                          # check cache size
+                          self.assertEqual(len(cache), item_count - 1)
 
-                      # check other keys are still here
-                      for old_key in map(pickle.loads, already_used_keys):
-                        if old_key != key:
-                          self.assertIn(old_key, cache)
+                          # check other keys are still here
+                          for old_key in map(pickle.loads, already_used_keys):
+                            if old_key != key:
+                              self.assertIn(old_key, cache)
 
-                      # add cache item again
-                      cache[key] = data
+                          # add cache item again
+                          cache[key] = data
 
                 # fix huge memory usage with pypy
                 gc.collect()
