@@ -14,12 +14,8 @@ if sys.hexversion < 0x3040000:
 with open(os.path.join("web_cache", "__init__.py"), "rt") as f:
   version = re.search("__version__ = \"([^\"]+)\"", f.read()).group(1)
 
-try:
-  import pypandoc
-  readme = pypandoc.convert("README.md", "rst")
-except ImportError:
-  with open("README.md", "rt") as f:
-    readme = f.read()
+with open("README.md", "rt") as f:
+  readme = f.read()
 
 setup(name="web_cache",
       version=version,
@@ -28,6 +24,7 @@ setup(name="web_cache",
       test_suite="tests",
       description="Simple persistent cache storage, with different cache eviction strategies, and optional compression",
       long_description=readme,
+      long_description_content_type="text/markdown",
       url="https://github.com/desbma/web_cache",
       download_url="https://github.com/desbma/web_cache/archive/%s.tar.gz" % (version),
       keywords=["cache", "sqlite3", "key-value", "persistent"],
