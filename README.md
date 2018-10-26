@@ -22,9 +22,9 @@ The typical use case is a URL to HTTP data cache, but it can also be used fo non
 
 ## Installation (from PyPI, with PIP)
 
-web_cache requires [Python](https://www.python.org/downloads/) >= 3.3.
+web_cache requires [Python](https://www.python.org/downloads/) >= 3.4.
 
-1. If you don't already have it, [install pip](https://pip.pypa.io/en/stable/installing/) for Python 3 (not needed if you are using Python >= 3.4)
+1. If you don't already have it, [install pip](https://pip.pypa.io/en/stable/installing/) for Python 3
 2. Install web_cache: `pip3 install web_cache`
 
 
