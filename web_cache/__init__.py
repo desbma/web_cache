@@ -1,6 +1,6 @@
 """ Persistent cache storage for web ressources, with different cache eviction strategies, and optional compression. """
 
-__version__ = "1.0.2"
+__version__ = "1.1.0"
 __author__ = "desbma"
 __license__ = "LGPLv2"
 
