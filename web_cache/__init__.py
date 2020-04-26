@@ -17,6 +17,13 @@ import sqlite3
 import threading
 import zlib
 
+try:
+  import zstandard
+except ImportError:
+  HAS_ZSTD = False
+else:
+  HAS_ZSTD = True
+
 
 DB_FORMAT_VERSION = 2  # incremented at each incompatible database/pickle format change
 PICKLE_PROTOCOL_VERSION = 4
@@ -28,6 +35,7 @@ class Compression(enum.IntEnum):
   DEFLATE = 1
   BZIP2 = 2
   LZMA = 3
+  ZSTD = 4
 
 
 CachingStrategy = enum.Enum("CachingStrategy", ("FIFO", "LRU"))
@@ -167,6 +175,10 @@ class WebCache:
     elif compression == Compression.LZMA:
       buffer = memoryview(data)
       data = lzma.decompress(buffer)
+    elif compression == Compression.ZSTD:
+      assert(HAS_ZSTD)
+      buffer = memoryview(data)
+      data = zstandard.ZstdDecompressor().decompress(buffer)
 
     if self.__caching_strategy is CachingStrategy.LRU:
       # update last access time
@@ -200,6 +212,10 @@ class WebCache:
     elif self.__compression is Compression.LZMA:
       buffer = memoryview(data)
       compressed_data = lzma.compress(buffer, format=lzma.FORMAT_ALONE, preset=self.__compression_level)
+    elif self.__compression is Compression.ZSTD:
+      assert(HAS_ZSTD)
+      buffer = memoryview(data)
+      compressed_data = zstandard.ZstdCompressor(level=self.__compression_level).compress(buffer)
 
     if (self.__compression is Compression.NONE) or (len(compressed_data) > len(data) * self.__auto_compression_threshold):
       data_to_store = data

@@ -8,13 +8,13 @@ Web cache
 [![License](https://img.shields.io/github/license/desbma/web_cache.svg?style=flat)](https://github.com/desbma/web_cache/blob/master/LICENSE)
 
 Python module for simple key-value storage backed up by sqlite3 database.
-The typical use case is a URL to HTTP data cache, but it can also be used fo non web ressources.
+The typical use case is a URL to HTTP data cache, but it can also be used for non web ressources.
 
 
 ## Features
 
 * Simple `dict` interface allows natural usage (`if key in cache`, `value = cache[key]`, etc.)
-* Optional Zlib, BZIP2 or LZMA compression
+* Optional Zlib (deflate), BZIP2, LZMA or ZSTD (Zstandard) compression, with configurable compression level
 * FIFO or LRU cache eviction strategies
 * Optional thread safe interface to work around Python Sqlite3 'same thread' limitation
 * Provides cache hit rate statistics
